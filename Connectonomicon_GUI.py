@@ -851,7 +851,7 @@ def classifyObsNearCurve(X, Y, obs_list, tolerance, known_obs, final_date, downs
         distances = np.linalg.norm(curve - point, axis=1)
         min_distance = np.min(distances)
         
-        if (min_distance < tolerance and abs(obs.mag - known_mag) < 2 # distance and magnitude
+        if (min_distance < tolerance and ((obs.mag and abs(obs.mag - known_mag) < 2) or (not obs.mag)) # distance and magnitude
             and known_obs.date < obs.date < final_date + timedelta(seconds=(final_date - known_obs.date).total_seconds() * 0.2)): # obs dates
             close_obs.append(obs)
         else:
