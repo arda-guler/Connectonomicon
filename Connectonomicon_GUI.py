@@ -111,8 +111,13 @@ class Obs: # MPC 80-column observations
             RA_parts = RA_str.split()
             RA_deg = float(RA_parts[0]) * hour2deg + float(RA_parts[1]) * minute2deg + float(RA_parts[2]) * second2deg
 
+            if obs_str[44] == "-":
+                DEC_sign = -1
+            else:
+                DEC_sign = 1
+
             DEC_parts = DEC_str.split()
-            DEC_deg = (abs(float(DEC_parts[0])) + float(DEC_parts[1]) / 60 + float(DEC_parts[2]) / 3600) * sign(float(DEC_parts[0]))
+            DEC_deg = (abs(float(DEC_parts[0])) + float(DEC_parts[1]) / 60 + float(DEC_parts[2]) / 3600) * DEC_sign
 
             # mag handling
             try:
