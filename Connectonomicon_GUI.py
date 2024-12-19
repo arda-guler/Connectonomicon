@@ -14,7 +14,7 @@ from tkinter import filedialog, messagebox
 from tkinter import ttk
 
 title = "== == == Connectonomicon == == =="
-version = "v20241215.00"
+version = "v20241219.00"
 authors = "Authors: H. A. Guler\n\nConnectonomicon uses find_orb for orbit determination, developed by Bill Gray. (https://www.projectpluto.com/)"
 license_text = "Connectonomicon is licensed under GNU General Public License v2.\nfind_orb is licensed under GNU General Public License v2, see https://www.projectpluto.com/find_orb.htm#License.\n" +\
                "SPICE kernels are not shared alongside this tool, but their use may be credited as described in https://naif.jpl.nasa.gov/naif/credit.html"
