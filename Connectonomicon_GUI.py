@@ -7,14 +7,13 @@ import matplotlib.pyplot as plt
 import subprocess
 import os
 import mplcursors
-import math
 
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 
 title = "== == == Connectonomicon == == =="
-version = "v20241219.00"
+version = "v20241219.01"
 authors = "Authors: H. A. Guler\n\nConnectonomicon uses find_orb for orbit determination, developed by Bill Gray. (https://www.projectpluto.com/)"
 license_text = "Connectonomicon is licensed under GNU General Public License v2.\nfind_orb is licensed under GNU General Public License v2, see https://www.projectpluto.com/find_orb.htm#License.\n" +\
                "SPICE kernels are not shared alongside this tool, but their use may be credited as described in https://naif.jpl.nasa.gov/naif/credit.html"
@@ -34,10 +33,7 @@ https://www.projectpluto.com/fo_usage.htm
 
 You need to define observations in Obs80 (MPC 80-column format) in two files - a list of known observations which will be used for the orbit fit and a list of undetermined observations to search within.
 
-You also need SPICE kernels for the orbit propagator, which you can get through NAIF (https://naif.jpl.nasa.gov/naif/). Place them in a 'data' folder:
-
-data/de440.bsp
-data/naif0012.tls
+You will also need some SPICE kernels from NAIF, and a list of obscodes from MPC. See README.txt for more info.
 """
 
 # Constants
@@ -327,9 +323,9 @@ class Observatory:
         self.lon = lon
         self.name = name
 
-        # convert MPC's phi and rho to longitude and altitude
-        self.lat = math.degrees(math.atan2(sin_phi, cos_phi))
-        self.rho = 6371.0088 * math.sqrt(cos_phi**2 + sin_phi**2)
+        # convert MPC's phi and rho to latitude and altitude
+        self.lat = np.degrees(np.arcsin(sin_phi))
+        self.rho = 6371.0088 * (cos_phi**2 + sin_phi**2)**0.5
 
     def __repr__(self):
         return (f"Observatory(code={self.code}, name='{self.name}', "
@@ -578,13 +574,13 @@ def readObservatoryData(file_path):
         for line in file:
             if line.strip() and not line.startswith("Code"):
                 try:
-                    code = line[0:4].strip()
-                    longitude = float(line[5:13])
+                    code = line[0:3].strip()
+                    longitude = float(line[3:13])
                     cos_phi = float(line[13:21])
                     sin_phi = float(line[21:30])
                     name = ''.join(line[30:len(line)-1])
                     observatories[code] = Observatory(code, longitude, cos_phi, sin_phi, name)
-                except ValueError as e: # space teelscopes etc. obviously don't have these
+                except ValueError as e: # space telescopes etc. obviously don't have these
                     pass
 
     return observatories
