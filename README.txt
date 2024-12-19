@@ -1,9 +1,9 @@
 === === === CONNECTONOMICON README === === ===
-version 20241215.00
+version 20241219.00
 
 !!!!!
 If you don't want to read this, please just 
-take a look at "Important Notes" at line 186.
+take a look at "Important Notes" at line 206.
 !!!!!
 
 === === Description
@@ -45,15 +45,28 @@ Place find_orb in the same directory as
 Connectonomicon.
 
 2) Obtain SPICE kernels
-Obtain de440.bsp and naif0012.tls from NAIF.
+Obtain the following from NAIF:
+de440.bsp
+naif0012.tls
+earth_000101_250316_241218.bpc
+pck00011.tpc
 
 https://naif.jpl.nasa.gov/naif/data.html
 
 Place them in a 'data' folder:
 data/de440.bsp
 data/naif0012.tls
+data/earth_000101_250316_241218.bpc
+data/pck00011.tpc
 
-3) Install required Python packages
+3) Obtain observatory data from MPC
+Save the following page
+
+https://minorplanetcenter.net/iau/lists/ObsCodes.html
+
+as data/obscodes.txt.
+
+4) Install required Python packages
 Using pip is the most common and easiest way.
 Go to the command line and use:
 
@@ -107,6 +120,13 @@ Max. Measurement Error: max. possible measurement
 Pixel Resolution: Angular resolution of the
     electrooptical system through which the
     measurements were made (often a CCD cam).
+    
+Reference Obscode: The MPC obscode of the
+    observatory for which you want to plot the
+    chart. It won't make much difference for
+    distant objects but may be especially 
+    important for NEOs and is practically a must 
+    for artsats.
     
 Orbit Determination: Orbit determination method.
     find_orb is strongly recommended.
@@ -183,15 +203,7 @@ observations will be classified according to
 their dates, their proximity to the estimated
 orbit path, and their magnitudes.
 
-== == Important Notes! 
- > The program has no internal concept of
-   observatory stations as of this version,
-   and uses geocentric position for RA/DEC
-   calculations. Errors caused by this becomes
-   more prominent as objects closer to Earth
-   are investigated (such as NEOs). Forget about
-   satellite-based observations.
-   
+== == Important Notes!   
  > find_orb handles observation sets with
    different temporary codes as different
    objects. Try using the same temporary code
@@ -210,9 +222,6 @@ orbit path, and their magnitudes.
    
  > The native orbit determination algorithm
    is experimental!
- 
- > The native orbit determination algorithm
-   is experimental! It is not suggested.
    
 == == Contact
 Contact the author via email, or open an issue on

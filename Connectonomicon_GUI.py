@@ -1,20 +1,3 @@
-## Connectonomicon
-## Copyright (C) 2024  H. A. Guler
-##
-## This program is free software; you can redistribute it and/or
-## modify it under the terms of the GNU General Public License
-## as published by the Free Software Foundation; either version 2
-## of the License, or (at your option) any later version.
-##
-## This program is distributed in the hope that it will be useful,
-## but WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-## GNU General Public License for more details.
-##
-## You should have received a copy of the GNU General Public License
-## along with this program; if not, see
-## <https://www.gnu.org/licenses/>.
-
 import numpy as np
 import spiceypy as spice
 from datetime import datetime, timedelta
@@ -24,6 +7,7 @@ import matplotlib.pyplot as plt
 import subprocess
 import os
 import mplcursors
+import math
 
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -63,6 +47,7 @@ km_per_mAU = 149597870.7 * 1e-3
 s_per_d = 86400
 day = 86400
 arcsecond = 0.00027778 # deg
+observatories = {}
 
 ## CLASS DEFINITIONS
 class MainBody: # for the Sun and planets
@@ -123,7 +108,7 @@ class Obs: # MPC 80-column observations
             try:
                 mag = float(mag_str)
             except ValueError:
-                mag = None
+                mag = 0
 
             self.perm = packed_perm
             self.prov = packed_prov
@@ -336,6 +321,20 @@ class ObsPair: # A pair is any 2 astrometric observations of the same object
         plt.grid()
         plt.show()
 
+class Observatory:
+    def __init__(self, code, lon, cos_phi, sin_phi, name):
+        self.code = code
+        self.lon = lon
+        self.name = name
+
+        # convert MPC's phi and rho to longitude and altitude
+        self.lat = math.degrees(math.atan2(sin_phi, cos_phi))
+        self.rho = 6371.0088 * math.sqrt(cos_phi**2 + sin_phi**2)
+
+    def __repr__(self):
+        return (f"Observatory(code={self.code}, name='{self.name}', "
+                f"lon={self.lon:.4f}, lat={self.lat:.4f}, rho={self.rho:.4f})")
+
 def performPairAnalysis(knwon_pair, oc, pix, res):
     known_obses = text1.split("\n")
     o1 = Obs(known_pair[0])
@@ -477,7 +476,7 @@ def computeKepler(r, v, mu=1.3271244004193938e11):
         "mean anomaly": mean_anomaly
     }
 
-def propagate(p0, v0, date_init, date_final, mark_date=None, dt=None):
+def propagate(p0, v0, date_init, date_final, obs_code="Geocentric", mark_date=None, dt=None):
     global AU, day
 
     # generate bodies
@@ -545,10 +544,16 @@ def propagate(p0, v0, date_init, date_final, mark_date=None, dt=None):
             percent_done = round(cycle / N_cycles * 100, 2)
             print(f"Propagating: {percent_done}%")
 
-        rho, RA, DEC = getRADEC(cycle_date, mp.pos)
-        rhos.append(rho)
-        RAs.append(RA)
-        DECs.append(DEC)
+        if obs_code == "Geocentric":
+            rho, RA, DEC = getRADEC(cycle_date, mp.pos)
+            rhos.append(rho)
+            RAs.append(RA)
+            DECs.append(DEC)
+        else:
+            rho, RA, DEC = getRADECObsCode(cycle_date, obs_code, mp.pos)
+            rhos.append(rho)
+            RAs.append(RA)
+            DECs.append(DEC)
 
         if mark_date and abs((mark_date - cycle_date).total_seconds()) < 2 * dt:
             mark_RA = RA
@@ -565,9 +570,66 @@ def getEarthPos(obs_date, coord='ecliptic'):
     earth_pos = earth_state[:3]
     return earth_pos
 
+def readObservatoryData(file_path):
+    global observatories
+    print("Reading observatory data...")
+    
+    with open(file_path, 'r') as file:
+        for line in file:
+            if line.strip() and not line.startswith("Code"):
+                try:
+                    code = line[0:4].strip()
+                    longitude = float(line[5:13])
+                    cos_phi = float(line[13:21])
+                    sin_phi = float(line[21:30])
+                    name = ''.join(line[30:len(line)-1])
+                    observatories[code] = Observatory(code, longitude, cos_phi, sin_phi, name)
+                except ValueError as e: # space teelscopes etc. obviously don't have these
+                    pass
+
+    return observatories
+
+def getObsCodePos(obs_date, obs_code, coord='ecliptic'):
+    lat = observatories[obs_code].lat
+    lon = observatories[obs_code].lon
+    rho = observatories[obs_code].rho
+    
+    t = spice.str2et(obs_date.strftime('%Y-%m-%dT%H:%M:%S'))
+
+    if coord == 'ecliptic':
+        earth_pos, _ = spice.spkpos('EARTH', t, 'ECLIPJ2000', 'NONE', 'SOLAR SYSTEM BARYCENTER')
+    else:
+        earth_pos, _ = spice.spkpos('EARTH', t, 'J2000', 'NONE', 'SOLAR SYSTEM BARYCENTER')
+    
+    lat_rad = np.deg2rad(lat)
+    lon_rad = np.deg2rad(lon)
+    
+    R_EARTH = 6371.0088
+    
+    x_geo = rho * np.cos(lat_rad) * np.cos(lon_rad)
+    y_geo = rho * np.cos(lat_rad) * np.sin(lon_rad)
+    z_geo = rho * np.sin(lat_rad)
+    geo_pos = np.array([x_geo, y_geo, z_geo])
+    
+    geo_to_eci = spice.pxform('ITRF93', 'J2000', t)
+    eci_pos = geo_to_eci @ geo_pos
+
+    if coord == 'ecliptic':
+        eci_to_ecliptic = spice.pxform('J2000', 'ECLIPJ2000', t)
+        ecliptic_pos = eci_to_ecliptic @ eci_pos
+        obscode_pos = np.array(earth_pos) + ecliptic_pos
+    else:
+        obscode_pos = np.array(earth_pos) + eci_pos
+
+    return obscode_pos
+
 def getRADEC(obs_date, pos):
     earth_pos = getEarthPos(obs_date, 'equatorial')
     return cartezian2spherical(ecliptic2equatorial(pos) - earth_pos)
+
+def getRADECObsCode(obs_date, obs_code, pos):
+    obscode_pos = getObsCodePos(obs_date, obs_code, 'equatorial')
+    return cartezian2spherical(ecliptic2equatorial(pos) - obscode_pos)
 
 def equatorial2ecliptic(eq_pos):
     epsilon = np.deg2rad(23.439281)
@@ -604,6 +666,11 @@ def placeRelToEarth(obs_date, R, RA, DEC, coord='ecliptic'):
         earth_state, _ = spice.spkezr("EARTH", t, 'J2000', 'NONE', 'SOLAR SYSTEM BARYCENTER')
     earth_pos = earth_state[:3]
     p = earth_pos + spherical2cartezian(R, np.deg2rad(RA), np.deg2rad(DEC))
+    return p
+
+def placeRelToObsCode(obs_date, obs_code, R, RA, DEC, coord='ecliptic'):
+    obscode_pos = getObsCodePos(obs_date, obs_code, coord)
+    p = obscode_pos + spherical2cartezian(R, np.deg2rad(RA), np.deg2rad(DEC))
     return p
 
 def constructUnitVector(RA, DEC):
@@ -664,8 +731,11 @@ def get_rho2s(o1, o2, o3):
 def perfectV0(R1, deltaR, o1, o2):
     R2 = R1 + deltaR
 
-    p0 = equatorial2ecliptic(placeRelToEarth(o1.date, R1, o1.RA, o1.DEC, 'equatorial'))
-    pf = equatorial2ecliptic(placeRelToEarth(o2.date, R2, o2.RA, o2.DEC, 'equatorial'))
+    # p0 = equatorial2ecliptic(placeRelToEarth(o1.date, R1, o1.RA, o1.DEC, 'equatorial'))
+    # pf = equatorial2ecliptic(placeRelToEarth(o2.date, R2, o2.RA, o2.DEC, 'equatorial'))
+    
+    p0 = equatorial2ecliptic(placeRelToObsCode(o1.date, o1.obs_code, R1, o1.RA, o1.DEC, 'equatorial'))
+    pf = equatorial2ecliptic(placeRelToObsCode(o2.date, o2.obs_code, R2, o2.RA, o2.DEC, 'equatorial'))
 
     date_final = o2.date
     date_init = o1.date
@@ -677,7 +747,7 @@ def perfectV0(R1, deltaR, o1, o2):
     tol = 1e-4
     while error > tol:
         p_final, v_final, date_final_actual, _, _, _, _, _ = propagate(p0, v0, date_init, date_final)
-        R_final, RA_final, DEC_final = getRADEC(o2.date, pf)
+        R_final, RA_final, DEC_final = getRADECObsCode(o2.date, o2.obs_code, pf)
 
         p_err = pf - p_final
         v0 = v0 + p_err / delta_time
@@ -706,11 +776,13 @@ def determineOrbit(obs_all):
     deltaR = 0 * AU
     R2 = R1 + deltaR
 
-    p0 = equatorial2ecliptic(placeRelToEarth(o1.date, R1, o1.RA, o1.DEC, 'equatorial'))
-    pf = equatorial2ecliptic(placeRelToEarth(o2.date, R2, o2.RA, o2.DEC, 'equatorial'))
+    # p0 = equatorial2ecliptic(placeRelToEarth(o1.date, R1, o1.RA, o1.DEC, 'equatorial'))
+    # pf = equatorial2ecliptic(placeRelToEarth(o2.date, R2, o2.RA, o2.DEC, 'equatorial'))
+    p0 = equatorial2ecliptic(placeRelToObsCode(o1.date, o1.obs_code, R1, o1.RA, o1.DEC, 'equatorial'))
+    pf = equatorial2ecliptic(placeRelToObsCode(o2.date, o2.obs_code, R2, o2.RA, o2.DEC, 'equatorial'))
 
     delta_time = (date_final - date_init).total_seconds()
-    v0 = perfectV0(R1, deltaR, o1, o2)
+    # v0 = perfectV0(R1, deltaR, o1, o2)
     v0 = (mu / np.linalg.norm(p0))**0.5 * np.array([-p0[1] / np.linalg.norm(p0), p0[0] / np.linalg.norm(p0), 0])
 
     orbital_elems = computeKepler(p0, v0)
@@ -729,7 +801,7 @@ def determineOrbit(obs_all):
         for idx_o, o in enumerate(obs_all):
             if o.date != date_init:
                 p_check, v_check, date_check_actual, rhos, RAs, DECs, _, _ = propagate(p0, v0, date_init, o.date)
-                d_prop, RA_prop, DEC_prop = getRADEC(o.date, p_check)
+                d_prop, RA_prop, DEC_prop = getRADECObsCode(o.date, o.obs_code, p_check)
 
                 RA_err = o.RA - RA_prop
                 DEC_err = o.DEC - DEC_prop
@@ -740,7 +812,7 @@ def determineOrbit(obs_all):
         orbital_elems = computeKepler(p0, v0)
         # print(orbital_elems)
 
-        if abs(RA_err) < 5 * arcsecond and abs(DEC_err) < 5 * arcsecond:
+        if abs(RA_err) < 1 * arcsecond and abs(DEC_err) < 1 * arcsecond:
             good_fit = True
         else:
             adjust_vals = [0, 0, 0, 0, 0, 0]
@@ -762,7 +834,7 @@ def determineOrbit(obs_all):
                 for idx_o, o in enumerate(obs_all):
                     if o.date != date_init:
                         p_check_1, v_check_1, _, _, _, _, _, _ = propagate(p0, v0_1, date_init, o.date)
-                        _, RA_prop_1, DEC_prop_1 = getRADEC(o.date, p_check_1)
+                        _, RA_prop_1, DEC_prop_1 = getRADECObsCode(o.date, o.obs_code, p_check_1)
 
                         RA_err_1 = o.RA - RA_prop_1
                         DEC_err_1 = o.DEC - DEC_prop_1
@@ -795,7 +867,7 @@ def determineOrbit(obs_all):
                 for idx_o, o in enumerate(obs_all):
                     if o.date != date_init:
                         p_check_1, v_check_1, _, _, _, _, _, _ = propagate(p0_1, v0, date_init, o.date)
-                        _, RA_prop_1, DEC_prop_1 = getRADEC(o.date, p_check_1)
+                        _, RA_prop_1, DEC_prop_1 = getRADECObsCode(o.date, o.obs_code, p_check_1)
 
                         RA_err_1 = o.RA - RA_prop_1
                         DEC_err_1 = o.DEC - DEC_prop_1
@@ -856,7 +928,7 @@ def classifyObsNearCurve(X, Y, obs_list, tolerance, known_obs, final_date, downs
         distances = np.linalg.norm(curve - point, axis=1)
         min_distance = np.min(distances)
         
-        if (min_distance < tolerance and ((obs.mag and abs(obs.mag - known_mag) < 2) or (not obs.mag)) # distance and magnitude
+        if (min_distance < tolerance and ((not obs.mag) or (obs.mag and abs(obs.mag - known_mag) < 2)) # distance and magnitude
             and known_obs.date < obs.date < final_date + timedelta(seconds=(final_date - known_obs.date).total_seconds() * 0.2)): # obs dates
             close_obs.append(obs)
         else:
@@ -920,6 +992,12 @@ class AstrometryApp:
         self.resolution_entry = tk.Entry(root, width=40, bg="#212350", fg="#eeeeee")
         self.resolution_entry.insert(0, '9.793873680970562e-05')
         self.resolution_entry.grid(row=current_row, column=1, padx=10, pady=5)
+        current_row += 1
+
+        tk.Label(root, text="Reference Obscode:", bg="#212331", fg="#eeeeee").grid(row=current_row, column=0, padx=10, pady=5, sticky="w")
+        self.obscode_entry = tk.Entry(root, width=40, bg="#212350", fg="#eeeeee")
+        self.obscode_entry.insert(0, 'Geocentric')
+        self.obscode_entry.grid(row=current_row, column=1, padx=10, pady=5)
         current_row += 1
 
         s = ttk.Style() # silly ttk needs styles to style widgets
@@ -999,6 +1077,7 @@ class AstrometryApp:
         prop_time = float(self.prop_time_entry.get()) * day
         pix_error = float(self.pix_error_entry.get())
         pix_resolution = float(self.resolution_entry.get())
+        ref_obscode = self.obscode_entry.get()
 
         plot_unlikely_obs = self.unlikely_var.get()
         OD = self.OD_var.get()
@@ -1008,6 +1087,11 @@ class AstrometryApp:
         print("Loading SPICE kernels...")
         spice.furnsh('data/naif0012.tls')
         spice.furnsh('data/de440.bsp')
+        spice.furnsh('data/pck00011.tpc')
+        spice.furnsh('data/earth_000101_250316_241218.bpc')
+
+        # load observatory data
+        readObservatoryData('data/obscodes.txt')
         
         # orbit determination
         if OD == 'find_orb':
@@ -1036,7 +1120,7 @@ class AstrometryApp:
         # orbit propagation
         print("Propagating estimated orbit...")
         epoch_compensation = abs(obs_all[0].date - FO_epoch).total_seconds() * 2
-        pf, vf, date_final_actual, rhos, RAs, DECs, mark_RA, mark_DEC = propagate(p0, v0, FO_epoch, FO_epoch + timedelta(seconds=prop_time + epoch_compensation), obs_all[-1].date + timedelta(seconds=prop_time))
+        pf, vf, date_final_actual, rhos, RAs, DECs, mark_RA, mark_DEC = propagate(p0, v0, FO_epoch, FO_epoch + timedelta(seconds=prop_time + epoch_compensation), ref_obscode, obs_all[-1].date + timedelta(seconds=prop_time))
 
         # linear prediction
         print("Short arc linear prediction...")
