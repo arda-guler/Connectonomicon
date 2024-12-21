@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox
 from tkinter import ttk
 
 title = "== == == Connectonomicon == == =="
-version = "v20241219.01"
+version = "v20241221.00"
 authors = "Authors: H. A. Guler\n\nConnectonomicon uses find_orb for orbit determination, developed by Bill Gray. (https://www.projectpluto.com/)"
 license_text = "Connectonomicon is licensed under GNU General Public License v2.\nfind_orb is licensed under GNU General Public License v2, see https://www.projectpluto.com/find_orb.htm#License.\n" +\
                "SPICE kernels are not shared alongside this tool, but their use may be credited as described in https://naif.jpl.nasa.gov/naif/credit.html"
@@ -1151,7 +1151,7 @@ class AstrometryApp:
         plt.plot([final_obs_pair.o1.RA, p_center[0]], [final_obs_pair.o1.DEC, p_center[1]], "--", label="Ideal Linear Path")
         plt.grid()
         plt.title("Astrometry Chart")
-        plt.legend()
+        plt.legend(loc='upper left')
         plt.xlabel("RA (deg)")
         plt.ylabel("DEC (deg)")
         plt.axis('equal')

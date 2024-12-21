@@ -1,5 +1,5 @@
 === === === CONNECTONOMICON README === === ===
-version 20241219.00
+version 20241221.00
 
 !!!!!
 If you don't want to read this, please just 
